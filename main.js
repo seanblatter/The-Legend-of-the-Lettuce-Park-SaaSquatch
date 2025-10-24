@@ -389,7 +389,7 @@ function scatterCollectibles() {
 function createRocks() {
   for (let i = 0; i < 25; i++) {
     const rock = new pc.Entity('rock');
-    rock.addComponent('render', { type: 'icosphere', material: rockMaterial });
+    rock.addComponent('render', { type: 'sphere', material: rockMaterial });
     const size = 0.4 + Math.random() * 1.2;
     rock.setLocalScale(size, size, size);
     const angle = Math.random() * Math.PI * 2;
