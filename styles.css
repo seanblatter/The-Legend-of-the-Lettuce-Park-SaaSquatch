@@ -1,0 +1,56 @@
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  color: #f0f7f2;
+  background: #0d2510;
+}
+
+#application-canvas {
+  width: 100vw;
+  height: 100vh;
+  display: block;
+}
+
+#ui {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 5;
+  pointer-events: none;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+#ui h1 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.instructions {
+  max-width: 640px;
+}
+
+#prompt {
+  margin-top: 0.5rem;
+  font-size: 1.1rem;
+  color: #ffe082;
+}
+
+#inventory,
+#craft-log {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 0.5rem;
+  width: fit-content;
+}
+
+#inventory {
+  font-size: 1rem;
+}
+
+#craft-log {
+  font-size: 0.95rem;
+  max-width: 320px;
+}
