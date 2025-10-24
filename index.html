@@ -8,15 +8,74 @@
   <script src="https://code.playcanvas.com/playcanvas-latest.js"></script>
 </head>
 <body>
-  <div id="ui">
-    <h1>🦧🌿 The Legend of the Lettuce Park SaaSquatch</h1>
-    <p class="instructions">Click the forest to begin. Use <strong>WASD</strong> to walk, move the mouse to look around. Press <strong>E</strong> to interact with nearby items 🌟, trees 🌳, the tool rack 🪓, crafting crate 🧰, or storage 📦. Press <strong>C</strong> anywhere to craft a 🥗 SaaSquatch Salad.</p>
-    <div id="prompt"></div>
-    <div id="inventory"></div>
-    <div id="storage"></div>
-    <div id="craft-log"></div>
-  </div>
   <canvas id="application-canvas"></canvas>
+  <div id="ui">
+    <header class="ui-header">
+      <h1>🦧🌿 The Legend of the Lettuce Park SaaSquatch</h1>
+      <p class="instructions">
+        Click anywhere on the forest to begin exploring. Use <strong>WASD</strong> to walk, move the mouse to look
+        around. Press <strong>E</strong> to interact with trees 🌳, resources 🌟, crafting tables 🧰, water features 💧,
+        or storage 📦. You can also craft from the menu below.
+      </p>
+    </header>
+    <section class="hud">
+      <article class="panel inventory-panel">
+        <header>
+          <h2>Inventory</h2>
+          <button id="inventory-deposit" class="ghost-button" type="button">Deposit All ↩️</button>
+        </header>
+        <div id="inventory-grid" class="item-grid"></div>
+      </article>
+      <article class="panel storage-panel">
+        <header>
+          <h2>Camp Storage</h2>
+          <div class="storage-actions">
+            <button id="storage-withdraw" class="ghost-button" type="button">Withdraw 1️⃣</button>
+            <button id="storage-sort" class="ghost-button" type="button">Sort Items 🔃</button>
+          </div>
+        </header>
+        <div id="storage-grid" class="item-grid"></div>
+      </article>
+      <article class="panel crafting-panel">
+        <header>
+          <h2>Crafting Bench</h2>
+        </header>
+        <div class="crafting-recipes">
+          <div class="recipe" data-recipe="salad">
+            <div class="recipe-info">
+              <h3>🥗 SaaSquatch Salad</h3>
+              <p>Fresh greens with crunchy river stones for flair. Requires 🥬, 🥢, and 🪨.</p>
+            </div>
+            <button class="craft-button" data-action="salad" type="button">Craft</button>
+          </div>
+          <div class="recipe" data-recipe="shelter">
+            <div class="recipe-info">
+              <h3>🏕️ Cozy Shelter</h3>
+              <p>Bundle 5 🪵 logs, 3 🥢 sticks, and 2 🪨 stones to build a surprise shelter.</p>
+            </div>
+            <button class="craft-button" data-action="shelter" type="button">Assemble</button>
+          </div>
+          <div class="recipe" data-recipe="lure">
+            <div class="recipe-info">
+              <h3>🎣 River Lure</h3>
+              <p>A shiny charm for fishers. Requires 1 🪨 stone and 1 🥢 stick.</p>
+            </div>
+            <button class="craft-button" data-action="lure" type="button">Tie Lure</button>
+          </div>
+        </div>
+      </article>
+      <article class="panel activity-panel">
+        <header>
+          <h2>Activity Log</h2>
+        </header>
+        <div id="craft-log"></div>
+      </article>
+    </section>
+    <footer class="status-bar">
+      <div id="prompt"></div>
+      <div id="fishing-status"></div>
+    </footer>
+  </div>
   <script src="main.js"></script>
 </body>
 </html>

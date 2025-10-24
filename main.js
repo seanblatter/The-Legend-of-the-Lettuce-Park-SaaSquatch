@@ -1,8 +1,12 @@
 const canvas = document.getElementById('application-canvas');
 const promptEl = document.getElementById('prompt');
-const inventoryEl = document.getElementById('inventory');
+const inventoryGrid = document.getElementById('inventory-grid');
+const storageGrid = document.getElementById('storage-grid');
 const craftLogEl = document.getElementById('craft-log');
-const storageEl = document.getElementById('storage');
+const storageWithdrawBtn = document.getElementById('storage-withdraw');
+const storageSortBtn = document.getElementById('storage-sort');
+const inventoryDepositBtn = document.getElementById('inventory-deposit');
+const fishingStatusEl = document.getElementById('fishing-status');
 
 const app = new pc.Application(canvas, {
   mouse: new pc.Mouse(canvas),
@@ -18,66 +22,155 @@ window.addEventListener('resize', () => app.resizeCanvas());
 
 app.scene.toneMapping = pc.TONEMAP_ACES;
 app.scene.gammaCorrection = pc.GAMMA_SRGB;
-app.scene.ambientLight = new pc.Color(0.35, 0.42, 0.38);
+app.scene.skyboxIntensity = 1.1;
+app.scene.ambientLight = new pc.Color(0.28, 0.38, 0.35);
 
 function colorFromHex(hex) {
   const normalized = hex.replace('#', '');
-  if (normalized.length !== 6 && normalized.length !== 8) {
-    throw new Error(`Unsupported hex color format: ${hex}`);
-  }
-
   const hasAlpha = normalized.length === 8;
   const r = parseInt(normalized.slice(0, 2), 16) / 255;
   const g = parseInt(normalized.slice(2, 4), 16) / 255;
   const b = parseInt(normalized.slice(4, 6), 16) / 255;
   const a = hasAlpha ? parseInt(normalized.slice(6, 8), 16) / 255 : 1;
-
   return new pc.Color(r, g, b, a);
 }
 
 function createMaterial(hex, options = {}) {
-  const color = colorFromHex(hex);
   const material = new pc.StandardMaterial();
-  material.diffuse = color;
-  if (options.opacity !== undefined) {
-    material.opacity = options.opacity;
+  material.diffuse = colorFromHex(hex);
+  material.gloss = options.gloss ?? 0.35;
+  material.metalness = options.metalness ?? 0;
+  material.useMetalness = material.metalness > 0;
+  material.opacity = options.opacity ?? 1;
+  if (material.opacity < 1) {
     material.blendType = pc.BLEND_NORMAL;
-    material.depthWrite = options.opacity === 1;
-  }
-  material.gloss = options.gloss !== undefined ? options.gloss : 0.35;
-  if (options.metalness !== undefined) {
-    material.metalness = options.metalness;
-    material.useMetalness = true;
-  } else {
-    material.metalness = 0;
-    material.useMetalness = false;
+    material.depthWrite = false;
   }
   material.update();
   return material;
 }
 
-const groundMaterial = createMaterial('#3b5e35');
-const pathMaterial = createMaterial('#8b6f4a');
-const treeBarkMaterial = createMaterial('#5b3b1e');
-const treeLeafMaterial = createMaterial('#2f7f3f');
-const rockMaterial = createMaterial('#7d7f87');
-const lettuceMaterial = createMaterial('#65c16f');
-const stickMaterial = createMaterial('#c08f4a');
-const woodMaterial = createMaterial('#8b5a2b');
-const waterMaterial = createMaterial('#3d7fa6', { gloss: 0.85 });
-const cloudMaterial = createMaterial('#ffffff', { opacity: 0.85, gloss: 0.5 });
-const fabricMaterial = createMaterial('#d65f5f', { gloss: 0.3 });
-const cabinMaterial = createMaterial('#7b5330');
-const roofMaterial = createMaterial('#44332b');
+function createGradientTexture(colors, size = 256) {
+  const canvasTex = document.createElement('canvas');
+  canvasTex.width = 1;
+  canvasTex.height = size;
+  const ctx = canvasTex.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, size);
+  for (const stop of colors) {
+    gradient.addColorStop(stop.offset, stop.color);
+  }
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 1, size);
+  const texture = new pc.Texture(app.graphicsDevice, {
+    width: 1,
+    height: size,
+    format: pc.PIXELFORMAT_R8_G8_B8_A8,
+    mipmaps: false
+  });
+  texture.minFilter = pc.FILTER_LINEAR;
+  texture.magFilter = pc.FILTER_LINEAR;
+  texture.addressU = pc.ADDRESS_REPEAT;
+  texture.addressV = pc.ADDRESS_CLAMP_TO_EDGE;
+  texture.setSource(canvasTex);
+  return texture;
+}
 
-const playerHeight = 1.8;
+const groundMaterial = createMaterial('#3f6241');
+const pathMaterial = createMaterial('#8b6f4a', { gloss: 0.28 });
+const treeBarkMaterial = createMaterial('#5b3b1e', { gloss: 0.2 });
+const treeLeafMaterial = createMaterial('#2f7f3f', { gloss: 0.15 });
+const rockMaterial = createMaterial('#7d7f87', { gloss: 0.12, metalness: 0.05 });
+const lettuceMaterial = createMaterial('#65c16f', { gloss: 0.18 });
+const stickMaterial = createMaterial('#c08f4a', { gloss: 0.18 });
+const woodMaterial = createMaterial('#8b5a2b', { gloss: 0.28 });
+const fabricMaterial = createMaterial('#d65f5f', { gloss: 0.3 });
+const cabinMaterial = createMaterial('#7b5330', { gloss: 0.25 });
+const roofMaterial = createMaterial('#44332b', { gloss: 0.28 });
+
+const waterGradient = createGradientTexture([
+  { offset: 0, color: '#274f63' },
+  { offset: 0.35, color: '#2d7d92' },
+  { offset: 0.7, color: '#3ba7b6' },
+  { offset: 1, color: '#7ed4d7' }
+]);
+
+function createWaterMaterial() {
+  const material = new pc.StandardMaterial();
+  material.diffuse = new pc.Color(0.24, 0.52, 0.58);
+  material.emissive = new pc.Color(0.12, 0.24, 0.27);
+  material.emissiveIntensity = 1.25;
+  material.useMetalness = true;
+  material.metalness = 0.4;
+  material.gloss = 0.86;
+  material.cull = pc.CULLFACE_NONE;
+  material.opacity = 0.94;
+  material.blendType = pc.BLEND_NORMAL;
+  material.depthWrite = false;
+  material.diffuseMap = waterGradient;
+  material.diffuseMapTiling = new pc.Vec2(4, 1);
+  material.update();
+  return material;
+}
+
 const interactables = [];
+
 const storageInventory = {
   lettuce: 0,
   stick: 0,
   stone: 0,
-  wood: 0
+  wood: 0,
+  fish: 0,
+  lure: 0,
+  salad: 0
 };
+
+let storageSortMode = false;
+
+const itemDefinitions = {
+  lettuce: { icon: '🥬', label: 'Wild Lettuce', capacity: 12 },
+  stick: { icon: '🥢', label: 'Forest Sticks', capacity: 20 },
+  stone: { icon: '🪨', label: 'River Stones', capacity: 18 },
+  wood: { icon: '🪵', label: 'Timber Logs', capacity: 25 },
+  salad: { icon: '🥗', label: 'SaaSquatch Salad', capacity: 5 },
+  axe: { icon: '🪓', label: 'Lumber Axe', capacity: 1 },
+  fish: { icon: '🐟', label: 'River Fish', capacity: 6 },
+  lure: { icon: '🎣', label: 'River Lure', capacity: 4 }
+};
+
+const recipes = {
+  salad: {
+    label: 'SaaSquatch Salad',
+    requirements: { lettuce: 1, stick: 1, stone: 1 },
+    onCraft(player) {
+      player.inventory.salad++;
+      addCraftLog('Crafted a 🥗 SaaSquatch Salad! Crisp, crunchy, and energizing.');
+    }
+  },
+  shelter: {
+    label: 'Shelter',
+    requirements: { wood: 5, stone: 2, stick: 3 },
+    onCraft(player) {
+      const shelterTypes = ['tent', 'cabin', 'treehouse'];
+      const type = shelterTypes[Math.floor(Math.random() * shelterTypes.length)];
+      const spawnPoint = player.entity.getPosition().clone();
+      spawnPoint.add(new pc.Vec3(4, 0, 0));
+      buildShelter(type, spawnPoint, app.root);
+      addCraftLog(`Shelter complete! You assembled a ${
+        type === 'treehouse' ? '🌲 Tree House' : type === 'cabin' ? '🏠 Cabin' : '⛺ Tent'
+      }.`);
+    }
+  },
+  lure: {
+    label: 'River Lure',
+    requirements: { stone: 1, stick: 1 },
+    onCraft(player) {
+      player.inventory.lure++;
+      addCraftLog('You tied a sparkling 🎣 River Lure. Fish will adore this!');
+    }
+  }
+};
+
+let activePlayerController = null;
 
 function registerInteractable(entity) {
   interactables.push(entity);
@@ -85,24 +178,6 @@ function registerInteractable(entity) {
 
 function setPrompt(text) {
   promptEl.textContent = text;
-}
-
-function refreshInventoryUI(inventory) {
-  const entries = Object.keys(inventory)
-    .filter((key) => inventory[key] > 0)
-    .map((key) => `${inventoryIcons[key]} ${inventoryLabels[key]}: ${inventory[key]}`);
-  inventoryEl.textContent = entries.length
-    ? `Inventory: ${entries.join(' • ')}`
-    : 'Inventory: (empty)';
-}
-
-function refreshStorageUI() {
-  const entries = Object.keys(storageInventory)
-    .filter((key) => storageInventory[key] > 0)
-    .map((key) => `${inventoryIcons[key]} ${inventoryLabels[key]}: ${storageInventory[key]}`);
-  storageEl.textContent = entries.length
-    ? `Storage: ${entries.join(' • ')}`
-    : 'Storage: (empty)';
 }
 
 function addCraftLog(message) {
@@ -115,29 +190,85 @@ function addCraftLog(message) {
   const line = document.createElement('div');
   line.textContent = `[${timestamp}] ${message}`;
   craftLogEl.prepend(line);
-  const maxEntries = 6;
+  const maxEntries = 10;
   while (craftLogEl.children.length > maxEntries) {
     craftLogEl.removeChild(craftLogEl.lastChild);
   }
 }
 
-const inventoryIcons = {
-  lettuce: '🥬',
-  stick: '🥢',
-  stone: '🪨',
-  wood: '🪵',
-  salad: '🥗',
-  axe: '🪓'
-};
+function renderItemCard(key, count, container) {
+  const definition = itemDefinitions[key];
+  const card = document.createElement('div');
+  card.className = 'item-card';
 
-const inventoryLabels = {
-  lettuce: 'Wild Lettuce',
-  stick: 'Forest Sticks',
-  stone: 'River Stones',
-  wood: 'Timber Logs',
-  salad: 'SaaSquatch Salad',
-  axe: 'Lumber Axe'
-};
+  const label = document.createElement('div');
+  label.className = 'label';
+  const icon = document.createElement('span');
+  icon.textContent = definition.icon;
+  const text = document.createElement('strong');
+  text.textContent = definition.label;
+  label.appendChild(icon);
+  label.appendChild(text);
+  card.appendChild(label);
+
+  const countEl = document.createElement('div');
+  countEl.className = 'count';
+  countEl.textContent = `Quantity: ${count}`;
+  card.appendChild(countEl);
+
+  const progress = document.createElement('progress');
+  progress.max = definition.capacity;
+  progress.value = count;
+  card.appendChild(progress);
+
+  container.appendChild(card);
+}
+
+function renderItemGrid(container, source, options = {}) {
+  container.innerHTML = '';
+  const entries = Object.keys(itemDefinitions).map((key) => ({
+    key,
+    amount: source[key] ?? 0
+  }));
+  if (options.sortByValue) {
+    entries.sort((a, b) => b.amount - a.amount);
+  }
+  let displayed = 0;
+  for (const entry of entries) {
+    if (entry.amount > 0 || options.showZero) {
+      renderItemCard(entry.key, entry.amount, container);
+      displayed++;
+    }
+  }
+  if (displayed === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'item-card';
+    empty.innerHTML = '<div class="label"><span>🧺</span><strong>Nothing Stored</strong></div><div class="count">Collect resources to fill this panel.</div>';
+    container.appendChild(empty);
+  }
+}
+
+function refreshInventoryUI(inventory) {
+  renderItemGrid(inventoryGrid, inventory);
+  refreshCraftingButtons(inventory);
+}
+
+function refreshStorageUI() {
+  renderItemGrid(storageGrid, storageInventory, { sortByValue: storageSortMode });
+}
+
+function refreshCraftingButtons(inventory) {
+  document.querySelectorAll('.craft-button').forEach((button) => {
+    const action = button.dataset.action;
+    const recipe = recipes[action];
+    if (!recipe) {
+      button.disabled = true;
+      return;
+    }
+    const canCraft = Object.entries(recipe.requirements).every(([key, amount]) => (inventory[key] || 0) >= amount);
+    button.disabled = !canCraft;
+  });
+}
 
 const PlayerController = pc.createScript('playerController');
 PlayerController.attributes.add('cameraPivot', { type: 'entity' });
@@ -153,10 +284,16 @@ PlayerController.prototype.initialize = function () {
     stone: 0,
     wood: 0,
     salad: 0,
-    axe: 0
+    axe: 0,
+    fish: 0,
+    lure: 0
   };
   this.focusedInteraction = null;
   this.pointerLocked = false;
+  this.nearStorage = false;
+  this.nearCrafting = false;
+  this.nearWater = false;
+  this.fishingState = null;
 
   this._mouseMoveHandler = this.onMouseMove.bind(this);
   this._keyDownHandler = this.onKeyDown.bind(this);
@@ -176,54 +313,155 @@ PlayerController.prototype.initialize = function () {
 
   refreshInventoryUI(this.inventory);
   refreshStorageUI();
-  addCraftLog('Welcome to Lettuce Park! Gather resources, gear up 🪓, and build your dream shelter.');
+  addCraftLog('Welcome to Lettuce Park! Gather resources, craft tools, and explore the shimmering waters.');
+};
+
+PlayerController.prototype.onDestroy = function () {
+  this.app.mouse.off(pc.EVENT_MOUSEMOVE, this._mouseMoveHandler);
+  this.app.keyboard.off(pc.EVENT_KEYDOWN, this._keyDownHandler);
 };
 
 PlayerController.prototype.collectItem = function (itemData, entity) {
   this.inventory[itemData.key]++;
   refreshInventoryUI(this.inventory);
-  addCraftLog(`Collected ${itemData.emoji} ${itemData.label}!`);
+  addCraftLog(`Collected ${itemDefinitions[itemData.key].icon} ${itemData.label}!`);
   entity.enabled = false;
 };
 
-PlayerController.prototype.tryCraftSalad = function () {
-  const required = ['lettuce', 'stick', 'stone'];
-  const canCraft = required.every((key) => this.inventory[key] > 0);
-  if (canCraft) {
-    required.forEach((key) => {
-      this.inventory[key]--;
-    });
-    this.inventory.salad++;
+PlayerController.prototype.depositAllToStorage = function () {
+  if (!this.nearStorage) {
+    addCraftLog('Move closer to the 📦 storage crate before depositing items.');
+    return;
+  }
+  let moved = false;
+  Object.keys(storageInventory).forEach((key) => {
+    if (this.inventory[key] > 0) {
+      storageInventory[key] += this.inventory[key];
+      this.inventory[key] = 0;
+      moved = true;
+    }
+  });
+  if (moved) {
     refreshInventoryUI(this.inventory);
-    addCraftLog('Crafted a 🥗 SaaSquatch Salad! Delicious fuel for adventure.');
+    refreshStorageUI();
+    addCraftLog('You neatly stored your supplies inside the 📦 crate.');
   } else {
-    addCraftLog('You need 🥬 Lettuce, 🥢 Sticks, and 🪨 Stones to craft a 🥗 Salad.');
+    addCraftLog('Nothing to deposit right now. Time to gather more goods!');
   }
 };
 
-PlayerController.prototype.tryCraftShelter = function (spawnPoint) {
-  const needs = {
-    wood: 5,
-    stone: 2,
-    stick: 3
-  };
-  const canCraft = Object.entries(needs).every(([key, amount]) => this.inventory[key] >= amount);
-  if (!canCraft) {
-    addCraftLog('Shelter crafting requires 5 🪵 Logs, 2 🪨 Stones, and 3 🥢 Sticks.');
+PlayerController.prototype.withdrawFromStorage = function () {
+  if (!this.nearStorage) {
+    addCraftLog('Stand by the 📦 storage crate to withdraw items.');
     return;
   }
-
-  Object.entries(needs).forEach(([key, amount]) => {
-    this.inventory[key] -= amount;
-  });
+  const availableKeys = Object.keys(storageInventory).filter((key) => storageInventory[key] > 0);
+  if (availableKeys.length === 0) {
+    addCraftLog('Storage is empty. Explore the park for more resources!');
+    return;
+  }
+  const key = availableKeys.sort((a, b) => storageInventory[b] - storageInventory[a])[0];
+  storageInventory[key]--;
+  this.inventory[key] = (this.inventory[key] || 0) + 1;
   refreshInventoryUI(this.inventory);
+  refreshStorageUI();
+  addCraftLog(`You retrieved 1 ${itemDefinitions[key].icon} from the storage crate.`);
+};
 
-  const shelterTypes = ['tent', 'cabin', 'treehouse'];
-  const type = shelterTypes[Math.floor(Math.random() * shelterTypes.length)];
-  const position = spawnPoint.clone();
-  position.add(new pc.Vec3(4, 0, 0));
-  buildShelter(type, position, this.app.root);
-  addCraftLog(`Shelter complete! You assembled a ${type === 'treehouse' ? '🌲 Tree House' : type === 'cabin' ? '🏠 Cabin' : '⛺ Tent'}.`);
+PlayerController.prototype.sortStorage = function () {
+  if (!this.nearStorage) {
+    addCraftLog('Sorting only works when you are beside the storage crate.');
+    return;
+  }
+  const hasItems = Object.values(storageInventory).some((value) => value > 0);
+  if (!hasItems) {
+    addCraftLog('Nothing to sort just yet. Gather more to tidy later.');
+    return;
+  }
+  storageSortMode = !storageSortMode;
+  refreshStorageUI();
+  addCraftLog(
+    storageSortMode
+      ? 'Storage sorted by abundance. Everything feels organized!'
+      : 'Storage reverted to its natural order.'
+  );
+};
+
+PlayerController.prototype.tryCraftRecipe = function (key) {
+  const recipe = recipes[key];
+  if (!recipe) {
+    return;
+  }
+  if (key !== 'salad' && key !== 'lure' && !this.nearCrafting) {
+    addCraftLog('Approach the crafting crate 🧰 to assemble complex creations.');
+    return;
+  }
+  const canCraft = Object.entries(recipe.requirements).every(([itemKey, amount]) => this.inventory[itemKey] >= amount);
+  if (!canCraft) {
+    addCraftLog(`You need more ingredients to craft ${recipe.label}.`);
+    return;
+  }
+  Object.entries(recipe.requirements).forEach(([itemKey, amount]) => {
+    this.inventory[itemKey] -= amount;
+  });
+  recipe.onCraft(this);
+  refreshInventoryUI(this.inventory);
+};
+
+PlayerController.prototype.startFishing = function (spotData) {
+  if (this.fishingState) {
+    addCraftLog('You are already fishing. Stay patient!');
+    return;
+  }
+  if (spotData.requiresLure && this.inventory.lure <= 0) {
+    addCraftLog('You need a 🎣 River Lure equipped before casting here.');
+    return;
+  }
+  if (spotData.requiresLure) {
+    this.inventory.lure--;
+    refreshInventoryUI(this.inventory);
+    addCraftLog('You tie a lure to your line and cast it into the shimmering water.');
+  } else {
+    addCraftLog('You cast your line into the gentle ripples.');
+  }
+  this.fishingState = {
+    duration: 2.5 + Math.random() * 2.5,
+    timer: 0,
+    difficulty: spotData.difficulty || 1,
+    reward: spotData.reward || 'fish'
+  };
+  fishingStatusEl.textContent = '🎣 Waiting for a bite...';
+};
+
+PlayerController.prototype.updateFishing = function (dt) {
+  if (!this.fishingState) {
+    return;
+  }
+  this.fishingState.timer += dt;
+  const progress = Math.min(1, this.fishingState.timer / this.fishingState.duration);
+  const dots = '.'.repeat(1 + Math.floor(progress * 3));
+  fishingStatusEl.textContent = `🎣 Reeling${dots}`;
+  if (this.fishingState.timer >= this.fishingState.duration) {
+    const successChance = 0.6 - this.fishingState.difficulty * 0.05 + Math.random() * 0.5;
+    if (successChance > 0.4) {
+      this.inventory[this.fishingState.reward] = (this.inventory[this.fishingState.reward] || 0) + 1;
+      refreshInventoryUI(this.inventory);
+      addCraftLog(`Success! You caught a ${itemDefinitions[this.fishingState.reward].icon} from the water.`);
+    } else {
+      addCraftLog('The fish slipped away. Maybe try again with a better lure.');
+    }
+    fishingStatusEl.textContent = '';
+    this.fishingState = null;
+  }
+};
+
+PlayerController.prototype.cancelFishing = function () {
+  if (!this.fishingState) {
+    return;
+  }
+  fishingStatusEl.textContent = '';
+  addCraftLog('You reel in early, deciding to try again later.');
+  this.fishingState = null;
 };
 
 PlayerController.prototype.onKeyDown = function (event) {
@@ -235,10 +473,12 @@ PlayerController.prototype.onKeyDown = function (event) {
     setPrompt('');
     event.event.preventDefault();
   }
-
   if (event.key === pc.KEY_C) {
-    this.tryCraftSalad();
+    this.tryCraftRecipe('salad');
     event.event.preventDefault();
+  }
+  if (event.key === pc.KEY_ESCAPE) {
+    this.cancelFishing();
   }
 };
 
@@ -249,7 +489,6 @@ PlayerController.prototype.onMouseMove = function (event) {
   this.yaw -= event.dx * this.lookSpeed;
   this.pitch -= event.dy * this.lookSpeed;
   this.pitch = pc.math.clamp(this.pitch, -85, 85);
-
   this.entity.setLocalEulerAngles(0, this.yaw, 0);
   this.cameraPivot.setLocalEulerAngles(this.pitch, 0, 0);
 };
@@ -259,7 +498,6 @@ PlayerController.prototype.update = function (dt) {
   const forward = this.entity.forward.clone();
   forward.y = 0;
   forward.normalize();
-
   const right = this.entity.right.clone();
   right.y = 0;
   right.normalize();
@@ -291,14 +529,27 @@ PlayerController.prototype.update = function (dt) {
       continue;
     }
     const dist = playerPos.distance(entity.getPosition());
-    if (dist < 3 && dist < nearestDistance) {
+    if (dist < 4 && dist < nearestDistance) {
       nearest = entity;
       nearestDistance = dist;
     }
   }
 
+  this.nearStorage = false;
+  this.nearCrafting = false;
+  this.nearWater = false;
+
   if (nearest) {
     this.focusedInteraction = nearest;
+    if (nearest.tags && nearest.tags.has('storage')) {
+      this.nearStorage = true;
+    }
+    if (nearest.tags && nearest.tags.has('crafting')) {
+      this.nearCrafting = true;
+    }
+    if (nearest.tags && nearest.tags.has('water')) {
+      this.nearWater = true;
+    }
     const prompt = nearest.interaction.getPrompt
       ? nearest.interaction.getPrompt(this)
       : nearest.interaction.prompt || 'Press E to interact';
@@ -307,6 +558,8 @@ PlayerController.prototype.update = function (dt) {
     this.focusedInteraction = null;
     setPrompt('');
   }
+
+  this.updateFishing(dt);
 };
 
 const Spin = pc.createScript('spin');
@@ -325,24 +578,40 @@ Bob.prototype.initialize = function () {
 Bob.prototype.update = function (dt) {
   this.time += dt;
   const offset = Math.sin(this.time * 2) * 0.1;
-  this.entity.setLocalPosition(
-    this.startPosition.x,
-    this.startPosition.y + offset,
-    this.startPosition.z
-  );
+  this.entity.setLocalPosition(this.startPosition.x, this.startPosition.y + offset, this.startPosition.z);
+};
+
+const WaterSurface = pc.createScript('waterSurface');
+WaterSurface.attributes.add('amplitude', { type: 'number', default: 0.05 });
+WaterSurface.attributes.add('speed', { type: 'number', default: 0.35 });
+WaterSurface.prototype.initialize = function () {
+  this.time = Math.random() * 10;
+  const renderComponent = this.entity.render;
+  this.material = renderComponent.material || renderComponent.meshInstances[0].material;
+  this.baseEmissive = this.material.emissive.clone();
+  this.offset = this.material.diffuseMapOffset ? this.material.diffuseMapOffset.clone() : new pc.Vec2();
+};
+WaterSurface.prototype.update = function (dt) {
+  this.time += dt * this.speed;
+  const wave = (Math.sin(this.time) + Math.cos(this.time * 0.5)) * 0.5 * this.amplitude;
+  const intensity = pc.math.clamp(1.1 + wave * 3, 0.8, 1.6);
+  this.material.emissive = this.baseEmissive.clone().scale(intensity);
+  this.offset.set(wave * 2, this.time * 0.03);
+  this.material.diffuseMapOffset = this.offset;
+  this.material.update();
 };
 
 function createGround() {
   const ground = new pc.Entity('ground');
   ground.addComponent('render', { type: 'box', material: groundMaterial });
-  ground.setLocalScale(120, 0.2, 120);
-  ground.setPosition(0, -0.1, 0);
+  ground.setLocalScale(140, 0.2, 140);
+  ground.setPosition(0, -0.12, 0);
   app.root.addChild(ground);
 
   const path = new pc.Entity('path');
   path.addComponent('render', { type: 'plane', material: pathMaterial });
   path.setPosition(0, 0.01, 0);
-  path.setLocalScale(10, 10, 1);
+  path.setLocalScale(11, 11, 1);
   path.rotate(-90, 0, 0);
   app.root.addChild(path);
 }
@@ -354,20 +623,20 @@ function createLighting() {
     color: new pc.Color(1, 0.96, 0.88),
     castShadows: true,
     shadowBias: 0.3,
-    shadowDistance: 100,
+    shadowDistance: 120,
     normalOffsetBias: 0.02
   });
-  light.setEulerAngles(50, 35, 0);
+  light.setEulerAngles(52, 36, 0);
   app.root.addChild(light);
 
-  const lightBounce = new pc.Entity('fill');
-  lightBounce.addComponent('light', {
+  const fillLight = new pc.Entity('fill');
+  fillLight.addComponent('light', {
     type: 'directional',
     color: new pc.Color(0.2, 0.28, 0.4),
-    intensity: 0.25
+    intensity: 0.3
   });
-  lightBounce.setEulerAngles(-30, -120, 0);
-  app.root.addChild(lightBounce);
+  fillLight.setEulerAngles(-28, -120, 0);
+  app.root.addChild(fillLight);
 }
 
 function createLeafCluster(scale) {
@@ -401,9 +670,7 @@ function createRealisticTree(x, z, scale = 1) {
     branch.setLocalEulerAngles(30 + Math.random() * 25, angle, Math.random() * 20);
     tree.addChild(branch);
 
-    const leaves = createLeafCluster(
-      new pc.Vec3(1.5 + Math.random(), 1.2 + Math.random() * 0.6, 1.5 + Math.random())
-    );
+    const leaves = createLeafCluster(new pc.Vec3(1.5 + Math.random(), 1.2 + Math.random() * 0.6, 1.5 + Math.random()));
     leaves.setLocalPosition(branch.getLocalPosition().x, branch.getLocalPosition().y + 0.8 * scale, branch.getLocalPosition().z);
     tree.addChild(leaves);
   }
@@ -424,7 +691,6 @@ function createRealisticTree(x, z, scale = 1) {
         addCraftLog('You need a 🪓 Lumber Axe to chop trees.');
         return;
       }
-
       this.chopped = true;
       entity.enabled = false;
       spawnWoodDrops(entity.getPosition());
@@ -439,76 +705,78 @@ function createRealisticTree(x, z, scale = 1) {
 function spawnWoodDrops(position) {
   const count = 2 + Math.floor(Math.random() * 3);
   for (let i = 0; i < count; i++) {
-    const offset = new pc.Vec3((Math.random() - 0.5) * 2, 0, (Math.random() - 0.5) * 2);
-    const data = {
-      key: 'wood',
-      label: 'Timber Logs',
-      emoji: '🪵',
-      meshType: 'box',
-      material: woodMaterial,
-      scale: new pc.Vec3(0.3, 0.6, 1),
-      position: position.clone().add(offset)
+    const woodPiece = new pc.Entity('woodDrop');
+    woodPiece.addComponent('render', { type: 'capsule', material: woodMaterial });
+    woodPiece.setLocalScale(0.2, 0.5, 0.2);
+    const offset = new pc.Vec3((Math.random() - 0.5) * 1.5, 0.25, (Math.random() - 0.5) * 1.5);
+    woodPiece.setPosition(position.x + offset.x, 0.3 + offset.y, position.z + offset.z);
+    woodPiece.addComponent('script');
+    woodPiece.script.create('spin');
+    woodPiece.interaction = {
+      prompt: 'Press E to collect 🪵 Timber Logs',
+      onInteract(player, entity) {
+        player.inventory.wood++;
+        refreshInventoryUI(player.inventory);
+        addCraftLog('You scooped up a bundle of 🪵 logs.');
+        entity.enabled = false;
+      }
     };
-    createCollectible(data);
+    registerInteractable(woodPiece);
+    app.root.addChild(woodPiece);
   }
 }
 
 function populateForest() {
-  const radius = 38;
-  for (let i = 0; i < 55; i++) {
+  for (let i = 0; i < 50; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const distance = 12 + Math.random() * radius;
+    const distance = 12 + Math.random() * 45;
     const x = Math.cos(angle) * distance;
     const z = Math.sin(angle) * distance;
-    const scale = 0.8 + Math.random() * 1.8;
+    const scale = 0.8 + Math.random() * 1.5;
     createRealisticTree(x, z, scale);
   }
 }
 
-function createCollectible(config) {
-  const container = new pc.Entity(config.label);
-  container.setPosition(config.position.x, config.position.y, config.position.z);
-
-  const item = new pc.Entity('itemMesh');
-  item.addComponent('render', { type: config.meshType, material: config.material });
-  item.setLocalScale(config.scale.x, config.scale.y, config.scale.z);
-  item.addComponent('script');
-  item.script.create('spin');
-  item.script.create('bob');
-  container.addChild(item);
-
-  container.interaction = {
-    prompt: `Press E to gather ${config.emoji} ${config.label}`,
-    onInteract(player, entity) {
-      player.collectItem(config, entity);
+function createCollectible(data) {
+  const entity = new pc.Entity(data.key);
+  entity.addComponent('render', { type: data.meshType, material: data.material });
+  entity.setLocalScale(data.scale.x, data.scale.y, data.scale.z);
+  entity.setPosition(data.position.x, data.position.y, data.position.z);
+  entity.addComponent('script');
+  entity.script.create('spin');
+  entity.addComponent('collision', {
+    type: 'sphere',
+    radius: 0.5
+  });
+  entity.interaction = {
+    prompt: `Press E to collect ${data.emoji} ${data.label}`,
+    onInteract(player, entityInstance) {
+      player.collectItem(data, entityInstance);
     }
   };
-
-  registerInteractable(container);
-  app.root.addChild(container);
+  registerInteractable(entity);
+  app.root.addChild(entity);
 }
 
 function scatterCollectibles() {
   const spawnPoints = [
-    { x: 2, y: 0.4, z: -3 },
-    { x: -4, y: 0.4, z: 5 },
-    { x: 6, y: 0.4, z: 8 },
-    { x: -8, y: 0.4, z: -6 },
-    { x: 12, y: 0.4, z: 3 },
-    { x: 10, y: 0.4, z: -10 },
-    { x: -11, y: 0.4, z: 9 },
-    { x: 5, y: 0.4, z: 14 },
-    { x: -14, y: 0.4, z: -12 }
+    new pc.Vec3(3, 0.5, -2),
+    new pc.Vec3(-4, 0.5, -6),
+    new pc.Vec3(8, 0.5, 4),
+    new pc.Vec3(-10, 0.5, 9),
+    new pc.Vec3(5, 0.5, 12),
+    new pc.Vec3(14, 0.5, -3),
+    new pc.Vec3(-16, 0.5, 2),
+    new pc.Vec3(18, 0.5, 8)
   ];
-
   const types = [
     {
       key: 'lettuce',
       label: 'Wild Lettuce',
       emoji: '🥬',
-      meshType: 'sphere',
+      meshType: 'cone',
       material: lettuceMaterial,
-      scale: new pc.Vec3(0.6, 0.3, 0.6)
+      scale: new pc.Vec3(0.6, 0.8, 0.6)
     },
     {
       key: 'stick',
@@ -538,7 +806,7 @@ function scatterCollectibles() {
 }
 
 function createRocks() {
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 35; i++) {
     const rock = new pc.Entity('rock');
     rock.addComponent('render', { type: 'sphere', material: rockMaterial });
     const size = 0.4 + Math.random() * 1.2;
@@ -551,28 +819,146 @@ function createRocks() {
   }
 }
 
-function createWaterFeatures() {
-  const river = new pc.Entity('river');
-  river.addComponent('render', { type: 'plane', material: waterMaterial });
-  river.setLocalScale(6, 80, 1);
-  river.rotate(-90, 15, 0);
-  river.setPosition(-15, 0.05, 0);
-  app.root.addChild(river);
+function buildRibbonMesh(points, halfWidth) {
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  const indices = [];
+  let length = 0;
+  const up = new pc.Vec3(0, 1, 0);
+  for (let i = 0; i < points.length; i++) {
+    const current = points[i];
+    const next = points[Math.min(points.length - 1, i + 1)];
+    const prev = points[Math.max(0, i - 1)];
+    const dir = next.clone().sub(prev).normalize();
+    const left = up.clone().cross(dir).normalize();
+    const offset = left.scale(halfWidth);
+    const leftPoint = current.clone().add(offset);
+    const rightPoint = current.clone().sub(offset);
+    positions.push(leftPoint.x, leftPoint.y, leftPoint.z);
+    positions.push(rightPoint.x, rightPoint.y, rightPoint.z);
+    normals.push(0, 1, 0, 0, 1, 0);
+    uvs.push(0, length);
+    uvs.push(1, length);
+    if (i < points.length - 1) {
+      const base = i * 2;
+      indices.push(base, base + 1, base + 2);
+      indices.push(base + 1, base + 3, base + 2);
+      const segmentLength = current.distance(points[i + 1]) / (halfWidth * 2);
+      length += segmentLength;
+    }
+  }
+  return pc.createMesh(app.graphicsDevice, positions, {
+    normals,
+    uvs,
+    indices
+  });
+}
 
-  const lake = new pc.Entity('lake');
-  lake.addComponent('render', { type: 'plane', material: waterMaterial });
-  lake.setLocalScale(18, 18, 1);
-  lake.rotate(-90, 0, 0);
-  lake.setPosition(20, 0.04, 18);
-  app.root.addChild(lake);
+function buildLakeMesh(radiusX, radiusZ, segments, rippleHeight = 0.05) {
+  const positions = [0, 0, 0];
+  const normals = [0, 1, 0];
+  const uvs = [0.5, 0.5];
+  const indices = [];
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    const noise = 0.8 + Math.random() * 0.35;
+    const x = Math.cos(angle) * radiusX * noise;
+    const z = Math.sin(angle) * radiusZ * noise;
+    const y = Math.sin(angle * 3) * rippleHeight;
+    positions.push(x, y, z);
+    normals.push(0, 1, 0);
+    uvs.push((x / (radiusX * 2)) + 0.5, (z / (radiusZ * 2)) + 0.5);
+  }
+  for (let i = 1; i <= segments; i++) {
+    indices.push(0, i, i + 1);
+  }
+  indices.push(0, segments + 1, 1);
+  return pc.createMesh(app.graphicsDevice, positions, {
+    normals,
+    uvs,
+    indices
+  });
+}
+
+function createWaterFeatures() {
+  const riverPoints = [
+    new pc.Vec3(-35, 0.03, -30),
+    new pc.Vec3(-28, 0.03, -15),
+    new pc.Vec3(-20, 0.03, -5),
+    new pc.Vec3(-18, 0.03, 8),
+    new pc.Vec3(-22, 0.03, 22),
+    new pc.Vec3(-30, 0.03, 34)
+  ];
+  const riverEntity = new pc.Entity('river');
+  const riverMesh = buildRibbonMesh(riverPoints, 3);
+  const riverMaterial = createWaterMaterial();
+  const riverNode = new pc.GraphNode();
+  const riverInstance = new pc.MeshInstance(riverNode, riverMesh, riverMaterial);
+  riverInstance.castShadow = false;
+  riverEntity.addComponent('render', {
+    meshInstances: [riverInstance]
+  });
+  riverEntity.addComponent('script');
+  riverEntity.script.create('waterSurface', { attributes: { amplitude: 0.08, speed: 0.45 } });
+  app.root.addChild(riverEntity);
+
+  const lakeEntity = new pc.Entity('lake');
+  const lakeMesh = buildLakeMesh(12, 9, 46, 0.04);
+  const lakeMaterial = createWaterMaterial();
+  const lakeNode = new pc.GraphNode();
+  const lakeInstance = new pc.MeshInstance(lakeNode, lakeMesh, lakeMaterial);
+  lakeInstance.castShadow = false;
+  lakeEntity.addComponent('render', {
+    meshInstances: [lakeInstance]
+  });
+  lakeEntity.setPosition(22, 0.025, 18);
+  lakeEntity.addComponent('script');
+  lakeEntity.script.create('waterSurface', { attributes: { amplitude: 0.06, speed: 0.32 } });
+  app.root.addChild(lakeEntity);
+
+  return { riverPoints, lakePosition: lakeEntity.getPosition().clone() };
+}
+
+function createFishingSpot(position, difficulty, requiresLure = false) {
+  const spot = new pc.Entity('fishingSpot');
+  spot.setPosition(position.x, position.y, position.z);
+  const marker = new pc.Entity('fishingMarker');
+  marker.addComponent('render', { type: 'cylinder', material: fabricMaterial });
+  marker.setLocalScale(0.25, 0.1, 0.25);
+  marker.setLocalPosition(0, 0.3, 0);
+  marker.addComponent('script');
+  marker.script.create('bob');
+  spot.addChild(marker);
+  spot.interaction = {
+    getPrompt(player) {
+      const requirement = requiresLure ? ' with a 🎣 lure equipped' : '';
+      return `Press E to fish${requirement}`;
+    },
+    onInteract(player) {
+      player.startFishing({ difficulty, reward: 'fish', requiresLure });
+    }
+  };
+  spot.tags.add('water');
+  registerInteractable(spot);
+  app.root.addChild(spot);
+}
+
+function createFishingSpots({ riverPoints, lakePosition }) {
+  for (let i = 1; i < riverPoints.length - 1; i++) {
+    const point = riverPoints[i];
+    createFishingSpot(new pc.Vec3(point.x, point.y + 0.05, point.z), 1 + Math.random() * 1.2, i % 2 === 0);
+  }
+  createFishingSpot(new pc.Vec3(lakePosition.x + 2.5, lakePosition.y + 0.05, lakePosition.z + 1.5), 0.8, false);
+  createFishingSpot(new pc.Vec3(lakePosition.x - 3, lakePosition.y + 0.05, lakePosition.z - 2.2), 1.2, true);
 }
 
 function createClouds() {
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 10; i++) {
     const cloud = new pc.Entity('cloud');
-    cloud.addComponent('render', { type: 'box', material: cloudMaterial });
+    cloud.addComponent('render', { type: 'box', material: createMaterial('#ffffff', { opacity: 0.85, gloss: 0.5 }) });
     cloud.setLocalScale(6 + Math.random() * 8, 2 + Math.random(), 3 + Math.random() * 4);
-    cloud.setPosition(-20 + Math.random() * 40, 20 + Math.random() * 8, -30 + Math.random() * 60);
+    cloud.setPosition(-20 + Math.random() * 40, 22 + Math.random() * 6, -30 + Math.random() * 60);
     cloud.addComponent('script');
     cloud.script.create('bob');
     app.root.addChild(cloud);
@@ -631,41 +1017,11 @@ function createStorageCrate() {
       return 'Press E to manage 📦 storage';
     },
     onInteract(player) {
-      const inventory = player.inventory;
-      let moved = false;
-      const transferable = ['wood', 'stone', 'stick', 'lettuce'];
-      for (const key of transferable) {
-        if (inventory[key] > 0) {
-          storageInventory[key] += inventory[key];
-          inventory[key] = 0;
-          moved = true;
-        }
-      }
-      if (moved) {
-        refreshInventoryUI(inventory);
-        refreshStorageUI();
-        addCraftLog('You stored supplies safely inside the 📦 crate.');
-        return;
-      }
-
-      let withdrawn = false;
-      for (const key of transferable) {
-        if (storageInventory[key] > 0) {
-          inventory[key]++;
-          storageInventory[key]--;
-          withdrawn = true;
-          break;
-        }
-      }
-      if (withdrawn) {
-        refreshInventoryUI(inventory);
-        refreshStorageUI();
-        addCraftLog('You retrieved an item from the 📦 storage.');
-      } else {
-        addCraftLog('Storage is empty. Time to gather more goodies!');
-      }
+      player.nearStorage = true;
+      player.depositAllToStorage();
     }
   };
+  crate.tags.add('storage');
 
   registerInteractable(crate);
   app.root.addChild(crate);
@@ -689,12 +1045,14 @@ function createCraftingCrate() {
 
   crate.interaction = {
     getPrompt() {
-      return 'Press E to craft shelter 🏕️';
+      return 'Press E to craft shelter 🏕️ or tools';
     },
     onInteract(player, entity) {
-      player.tryCraftShelter(entity.getPosition());
+      player.nearCrafting = true;
+      player.tryCraftRecipe('shelter');
     }
   };
+  crate.tags.add('crafting');
 
   registerInteractable(crate);
   app.root.addChild(crate);
@@ -841,7 +1199,7 @@ function buildTreeHouse(position, root) {
 
 function createPlayer() {
   const player = new pc.Entity('player');
-  player.setPosition(0, playerHeight, 6);
+  player.setPosition(0, 1.8, 6);
   player.addComponent('script');
 
   const cameraPivot = new pc.Entity('cameraPivot');
@@ -851,7 +1209,7 @@ function createPlayer() {
   const camera = new pc.Entity('camera');
   camera.addComponent('camera', {
     clearColor: new pc.Color(0.52, 0.75, 0.91),
-    farClip: 220,
+    farClip: 240,
     fov: 72
   });
   camera.setLocalPosition(0, 0, 0);
@@ -864,7 +1222,7 @@ function createPlayer() {
   });
 
   app.root.addChild(player);
-
+  activePlayerController = player.script.playerController;
   return { player, camera };
 }
 
@@ -872,12 +1230,36 @@ createGround();
 createLighting();
 populateForest();
 createRocks();
-createWaterFeatures();
+const waterData = createWaterFeatures();
 createClouds();
 scatterCollectibles();
 createToolRack();
 createStorageCrate();
 createCraftingCrate();
+createFishingSpots(waterData);
 createPlayer();
 
-addCraftLog('Tip: Store extra supplies 📦 then craft a cozy shelter 🏡.');
+addCraftLog('Tip: Store extra supplies 📦, tie a 🎣 lure, and fish by the shimmering waters.');
+refreshCraftingButtons(activePlayerController ? activePlayerController.inventory : {});
+
+function connectUIEvents() {
+  if (!activePlayerController) {
+    return;
+  }
+  inventoryDepositBtn.addEventListener('click', () => {
+    activePlayerController.depositAllToStorage();
+  });
+  storageWithdrawBtn.addEventListener('click', () => {
+    activePlayerController.withdrawFromStorage();
+  });
+  storageSortBtn.addEventListener('click', () => {
+    activePlayerController.sortStorage();
+  });
+  document.querySelectorAll('.craft-button').forEach((button) => {
+    button.addEventListener('click', () => {
+      activePlayerController.tryCraftRecipe(button.dataset.action);
+    });
+  });
+}
+
+connectUIEvents();
