@@ -28,7 +28,7 @@ body {
 }
 
 .instructions {
-  max-width: 640px;
+  max-width: 720px;
 }
 
 #prompt {
@@ -38,6 +38,7 @@ body {
 }
 
 #inventory,
+#storage,
 #craft-log {
   margin-top: 0.5rem;
   padding: 0.5rem 0.75rem;
@@ -50,7 +51,11 @@ body {
   font-size: 1rem;
 }
 
+#storage {
+  font-size: 0.95rem;
+}
+
 #craft-log {
   font-size: 0.95rem;
-  max-width: 320px;
+  max-width: 360px;
 }
