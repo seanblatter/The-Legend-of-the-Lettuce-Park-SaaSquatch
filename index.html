@@ -11,11 +11,14 @@
   <canvas id="application-canvas"></canvas>
   <div id="ui">
     <header class="ui-header">
-      <h1>🦧🌿 The Legend of the Lettuce Park SaaSquatch</h1>
+      <div class="header-row">
+        <h1>🦧🌿 The Legend of the Lettuce Park SaaSquatch</h1>
+        <button id="crafting-toggle" class="ghost-button" type="button" aria-expanded="false">Open Crafting 🧰</button>
+      </div>
       <p class="instructions">
         Click anywhere on the forest to begin exploring. Use <strong>WASD</strong> to walk, move the mouse to look
         around. Press <strong>E</strong> to interact with trees 🌳, resources 🌟, crafting tables 🧰, water features 💧,
-        or storage 📦. You can also craft from the menu below.
+        or storage 📦. Toggle the crafting bench with <strong>C</strong> or the button above when you're ready to build.
       </p>
     </header>
     <section class="hud">
@@ -36,7 +39,7 @@
         </header>
         <div id="storage-grid" class="item-grid"></div>
       </article>
-      <article class="panel crafting-panel">
+      <article class="panel crafting-panel is-hidden">
         <header>
           <h2>Crafting Bench</h2>
         </header>

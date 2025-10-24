@@ -7,6 +7,36 @@ const storageWithdrawBtn = document.getElementById('storage-withdraw');
 const storageSortBtn = document.getElementById('storage-sort');
 const inventoryDepositBtn = document.getElementById('inventory-deposit');
 const fishingStatusEl = document.getElementById('fishing-status');
+const craftingPanel = document.querySelector('.crafting-panel');
+const craftingToggleBtn = document.getElementById('crafting-toggle');
+
+let craftingPanelOpen = false;
+
+function setCraftingPanelOpen(open) {
+  craftingPanelOpen = open;
+  if (craftingPanel) {
+    craftingPanel.classList.toggle('is-hidden', !open);
+  }
+  if (craftingToggleBtn) {
+    craftingToggleBtn.setAttribute('aria-expanded', String(open));
+    craftingToggleBtn.textContent = open ? 'Close Crafting 🧰' : 'Open Crafting 🧰';
+  }
+  if (open && document.pointerLockElement === canvas) {
+    document.exitPointerLock();
+  }
+}
+
+function toggleCraftingPanel() {
+  setCraftingPanelOpen(!craftingPanelOpen);
+}
+
+setCraftingPanelOpen(false);
+
+if (craftingToggleBtn) {
+  craftingToggleBtn.addEventListener('click', () => {
+    toggleCraftingPanel();
+  });
+}
 
 const app = new pc.Application(canvas, {
   mouse: new pc.Mouse(canvas),
@@ -311,6 +341,7 @@ PlayerController.prototype.initialize = function () {
     }
   });
 
+  setCraftingPanelOpen(false);
   refreshInventoryUI(this.inventory);
   refreshStorageUI();
   addCraftLog('Welcome to Lettuce Park! Gather resources, craft tools, and explore the shimmering waters.');
@@ -474,7 +505,7 @@ PlayerController.prototype.onKeyDown = function (event) {
     event.event.preventDefault();
   }
   if (event.key === pc.KEY_C) {
-    this.tryCraftRecipe('salad');
+    toggleCraftingPanel();
     event.event.preventDefault();
   }
   if (event.key === pc.KEY_ESCAPE) {
@@ -1045,11 +1076,18 @@ function createCraftingCrate() {
 
   crate.interaction = {
     getPrompt() {
-      return 'Press E to craft shelter 🏕️ or tools';
+      return craftingPanelOpen
+        ? 'Press E to close the 🧰 crafting bench'
+        : 'Press E to open the 🧰 crafting bench';
     },
-    onInteract(player, entity) {
-      player.nearCrafting = true;
-      player.tryCraftRecipe('shelter');
+    onInteract() {
+      const willOpen = !craftingPanelOpen;
+      setCraftingPanelOpen(willOpen);
+      addCraftLog(
+        willOpen
+          ? 'You open the crafting bench, ready to plan your next build.'
+          : 'You close the crafting bench and get back to exploring.'
+      );
     }
   };
   crate.tags.add('crafting');
