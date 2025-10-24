@@ -19,8 +19,23 @@ app.scene.toneMapping = pc.TONEMAP_ACES;
 app.scene.gammaCorrection = pc.GAMMA_SRGB;
 app.scene.ambientLight = new pc.Color(0.35, 0.42, 0.38);
 
+function colorFromHex(hex) {
+  const normalized = hex.replace('#', '');
+  if (normalized.length !== 6 && normalized.length !== 8) {
+    throw new Error(`Unsupported hex color format: ${hex}`);
+  }
+
+  const hasAlpha = normalized.length === 8;
+  const r = parseInt(normalized.slice(0, 2), 16) / 255;
+  const g = parseInt(normalized.slice(2, 4), 16) / 255;
+  const b = parseInt(normalized.slice(4, 6), 16) / 255;
+  const a = hasAlpha ? parseInt(normalized.slice(6, 8), 16) / 255 : 1;
+
+  return new pc.Color(r, g, b, a);
+}
+
 function createMaterial(hex) {
-  const color = pc.Color.fromString(hex);
+  const color = colorFromHex(hex);
   const material = new pc.StandardMaterial();
   material.diffuse = color;
   material.gloss = 0.3;
